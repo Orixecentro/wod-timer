@@ -29,7 +29,6 @@ body{font-family:'Barlow Condensed',sans-serif;background:#080808;color:#f5f5f5;
 
 .b-body{display:flex;flex:1;overflow:hidden;}
 
-/* block list */
 .bl{width:320px;border-right:1px solid var(--border);overflow-y:auto;flex-shrink:0;background:#0a0a0a;padding:8px 0;}
 .bl::-webkit-scrollbar{width:3px;}
 .bl::-webkit-scrollbar-thumb{background:var(--border);}
@@ -49,7 +48,6 @@ body{font-family:'Barlow Condensed',sans-serif;background:#080808;color:#f5f5f5;
 .btn-start{border-color:var(--rest);color:var(--rest);}
 .btn-start:hover{background:#001508;border-color:var(--rest);color:var(--rest);}
 
-/* editor */
 .ep{flex:1;padding:16px 28px;overflow-y:auto;display:flex;flex-direction:column;background:#0c0c0c;}
 .ep::-webkit-scrollbar{width:3px;}
 .ep::-webkit-scrollbar-thumb{background:var(--border);}
@@ -143,7 +141,6 @@ body{font-family:'Barlow Condensed',sans-serif;background:#080808;color:#f5f5f5;
 .fbtn:hover{background:var(--rest);color:#000;border-color:var(--rest);}
 .fbtn.sec:hover{background:#333;color:#fff;border-color:#555;}
 
-/* flash */
 .flash-ov{position:fixed;inset:0;pointer-events:none;opacity:0;z-index:100;transition:opacity .08s;}
 .flash-ov.fl{opacity:.2;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
@@ -312,6 +309,29 @@ const DESCS={
 // ═══ NAV ═══
 let nav={selectedId:null};
 
+// ═══ AUDIO ═══
+let _audioCtx=null;
+function _getCtx(){
+  if(!_audioCtx)_audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  return _audioCtx;
+}
+function beep(freq,dur,vol){
+  try{
+    const ctx=_getCtx();
+    const o=ctx.createOscillator();
+    const g=ctx.createGain();
+    o.connect(g);g.connect(ctx.destination);
+    o.type='sine';o.frequency.value=freq;
+    g.gain.setValueAtTime(vol||0.6,ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+(dur||0.15));
+    o.start(ctx.currentTime);
+    o.stop(ctx.currentTime+(dur||0.15));
+  }catch(e){}
+}
+// Desbloquear AudioContext en el primer gesto del usuario
+document.addEventListener('click',()=>{try{_getCtx();}catch(e){}},{once:true});
+document.addEventListener('keydown',()=>{try{_getCtx();}catch(e){}},{once:true});
+
 // ═══ RENDER ═══
 function renderBuilder(){
   document.getElementById('totalDisp').textContent=fmt(totalWod());
@@ -381,13 +401,11 @@ function renderEditor(){
     panel.appendChild(row);
   });
 
-  // duration
   const dur=document.createElement('div');
   dur.className='dur-line';
   dur.innerHTML='DURACIÓN BLOQUE: <span class="dur-val">'+fmt(blockDur(b))+'</span>';
   panel.appendChild(dur);
 
-  // description
   const desc=DESCS[b.type];
   if(desc){
     const card=document.createElement('div');
@@ -399,7 +417,6 @@ function renderEditor(){
     panel.appendChild(card);
   }
 
-  // action buttons
   const actRow=document.createElement('div');
   actRow.className='act-row';
   const dupBtn=document.createElement('button');dupBtn.className='ab';dupBtn.textContent='DUPLICAR';
@@ -459,7 +476,6 @@ function startPhase(phase){
   R.tl=dur;R.pd=dur;
   document.getElementById('btnPause').textContent='⏸ PAUSA';
   updateUI();
-  speak(phase,b.type,R.rep);
   if(R.iv)clearInterval(R.iv);
   if(b.type==='fortime'&&phase==='work')R.iv=setInterval(tickUp,1000);
   else R.iv=setInterval(tick,1000);
@@ -469,7 +485,11 @@ function tick(){
   if(R.paused)return;
   R.tl--;R.elapsed++;updateUI();
   if(R.tl<=3&&R.tl>0)triggerFlash();
-  if(R.tl<=0){clearInterval(R.iv);nextPhase();}
+  if(R.tl<=0){
+    beep(880,0.18,0.7); // ← beep al finalizar fase
+    clearInterval(R.iv);
+    nextPhase();
+  }
 }
 function tickUp(){if(R.paused)return;R.tl++;R.elapsed++;updateUI();}
 
@@ -500,10 +520,8 @@ function updateUI(){
   te.textContent=fmt(R.tl);
   te.className='big-t '+(ph==='work'?'work':ph==='rest-rep'?'rest':'blue');
   document.getElementById('rBN').textContent=b.name;
-  // dots
   const dots=document.getElementById('rDots');dots.innerHTML='';
   blocks.forEach((_,i)=>{const d=document.createElement('div');d.className='pdot'+(i<R.bi?' done':i===R.bi?' cur':'');dots.appendChild(d);});
-  // series
   let si='—';
   if(b.type==='emom')si=(R.rep+1)+'/'+b.reps;
   else if(b.type==='tabata')si=(R.rep+1)+'/'+b.tabataSets;
@@ -513,7 +531,6 @@ function updateUI(){
   else if(b.type==='amrap')si='AMRAP';
   else if(b.type==='fortime')si='FOR TIME';
   document.getElementById('rSI').textContent=si;
-  // rep row
   const rr=document.getElementById('repRow');
   let showRep=false,repTxt='';
   if(ph==='work'){
@@ -523,7 +540,6 @@ function updateUI(){
   }
   rr.style.display=showRep?'flex':'none';
   if(showRep)document.getElementById('repVal').textContent=repTxt;
-  // pips
   const pips=document.getElementById('rPips');pips.innerHTML='';
   let tot=0,don=0;
   if(b.type==='emom'){tot=b.reps;don=R.rep;}
@@ -531,12 +547,10 @@ function updateUI(){
   else if(b.type==='rft'){tot=b.rounds;don=R.rep;}
   else if(b.type==='ladder'){tot=R.lrArr.length;don=R.lrIdx;}
   if(tot>0&&tot<=20){for(let i=0;i<tot;i++){const p=document.createElement('div');p.className='rpip'+(i<don?' done':i===don?' cur':'');pips.appendChild(p);}}
-  // pbar
   const bar=document.getElementById('pBar');
   const isUp=b.type==='fortime'&&ph==='work';
   bar.style.width=(R.pd>0&&!isUp)?(R.tl/R.pd*100)+'%':'100%';
   bar.className='pbar'+(ph==='rest-rep'?' rest':ph==='rest-block'?' blue':'');
-  // remaining & next
   document.getElementById('rWR').textContent=fmt(calcRem());
   document.getElementById('rNext').textContent=getNext();
 }
@@ -560,34 +574,15 @@ function getNext(){
   if(R.phase==='rest-block')return R.bi+1<blocks.length?blocks[R.bi+1].name:'FIN';
   return'—';
 }
-function finishWod(){clearInterval(R.iv);showScreen('finished');document.getElementById('finTime').textContent=fmt(R.elapsed);speak('finish');}
+function finishWod(){
+  clearInterval(R.iv);
+  beep(660,0.4,0.8); // ← beep final WOD
+  showScreen('finished');
+  document.getElementById('finTime').textContent=fmt(R.elapsed);
+}
 
 // ═══ FLASH ═══
 function triggerFlash(){const f=document.getElementById('flashOv');f.style.background=R.phase==='work'?'#ff1a1a':R.phase==='rest-rep'?'#00e676':'#2979ff';f.classList.add('fl');setTimeout(()=>f.classList.remove('fl'),120);}
-
-// ═══ VOICE ═══
-let _voices=[];
-function _loadV(){_voices=window.speechSynthesis?window.speechSynthesis.getVoices():[];}
-if(window.speechSynthesis){window.speechSynthesis.onvoiceschanged=_loadV;setTimeout(_loadV,500);}
-function speak(phase,type,rep){
-  if(!window.speechSynthesis)return;
-  let txt='';
-  const b=blocks[R.bi];
-  const totalR=b?b.type==='emom'?b.reps:b.type==='tabata'?b.tabataSets:b.type==='rft'?b.rounds:99:99;
-  if(phase==='work'){txt=rep===totalR-1&&totalR>1?'Última ronda, tú puedes':'Dale';}
-  else if(phase==='rest-rep'){txt='Stop, descansa';}
-  else if(phase==='rest-block'){txt='Bloque completado, descansa';}
-  else if(phase==='finish'){txt='WOD completado, grande';}
-  if(!txt)return;
-  try{
-    window.speechSynthesis.cancel();
-    const u=new SpeechSynthesisUtterance(txt);
-    u.lang='es-ES';u.rate=1.1;u.pitch=1.1;u.volume=1;
-    const v=_voices.find(x=>x.lang&&x.lang.startsWith('es'));
-    if(v)u.voice=v;
-    window.speechSynthesis.speak(u);
-  }catch(e){}
-}
 
 // ═══ SCREENS ═══
 let curScreen='builder';
