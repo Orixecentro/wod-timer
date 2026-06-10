@@ -145,6 +145,16 @@ body{font-family:'Barlow Condensed',sans-serif;background:#080808;color:#f5f5f5;
 .flash-ov.fl{opacity:.2;}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
 .pulsing{animation:pulse 1s infinite;}
+.bi-toggle{flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:3px;cursor:pointer;padding:4px 6px;}
+.bi-toggle-btn{width:36px;height:20px;border-radius:10px;border:none;cursor:pointer;position:relative;transition:background .2s;}
+.bi-toggle-btn.on{background:var(--rest);}
+.bi-toggle-btn.off{background:#333;}
+.bi-toggle-btn::after{content:'';position:absolute;width:14px;height:14px;border-radius:50%;background:#fff;top:3px;transition:left .2s;}
+.bi-toggle-btn.on::after{left:19px;}
+.bi-toggle-btn.off::after{left:3px;}
+.bi-toggle-lbl{font-size:9px;letter-spacing:1px;color:var(--muted);}
+.bi-toggle-lbl.on{color:var(--rest);}
+
 </style>
 </head>
 <body>
@@ -197,6 +207,18 @@ body{font-family:'Barlow Condensed',sans-serif;background:#080808;color:#f5f5f5;
   </div>
 </div>
 
+
+<!-- WAITING -->
+<div id="screen-waiting" class="screen">
+  <div style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;background:radial-gradient(ellipse at center,#001a3a 0%,#00060f 60%,#000 100%);">
+    <div style="font-size:11px;letter-spacing:6px;color:#555;font-family:'Barlow',sans-serif;">BLOQUE COMPLETADO</div>
+    <div style="font-weight:900;font-size:48px;letter-spacing:6px;color:#2979ff;" id="waitNextName">—</div>
+    <div style="font-size:13px;letter-spacing:4px;color:#444;font-family:'Barlow',sans-serif;">LISTO PARA CONTINUAR</div>
+    <button id="btnWaitGo" style="margin-top:16px;padding:18px 48px;font-family:'Barlow Condensed',sans-serif;font-weight:900;font-size:24px;letter-spacing:6px;background:transparent;border:2px solid #2979ff;color:#2979ff;cursor:pointer;">▶ INICIAR</button>
+    <button id="btnWaitExit" style="padding:10px 28px;font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:14px;letter-spacing:3px;background:transparent;border:1px solid #333;color:#444;cursor:pointer;">✕ SALIR</button>
+  </div>
+</div>
+
 <!-- FINISHED -->
 <div id="screen-finished" class="screen">
   <div class="fin-t">WOD COMPLETO</div>
@@ -211,12 +233,12 @@ body{font-family:'Barlow Condensed',sans-serif;background:#080808;color:#f5f5f5;
 <script>
 // ═══ DATA ═══
 let blocks=[
-  {id:1,type:'emom',name:'EMOM A',reps:5,workSec:150,restRepSec:10,restBlockSec:60,timecap:0,rounds:5,totalSec:600,tabataWork:20,tabataRest:10,tabataSets:8,startReps:1,endReps:10,stepReps:1,workPerRep:10,direction:'up'},
-  {id:2,type:'emom',name:'EMOM B',reps:5,workSec:180,restRepSec:10,restBlockSec:0,timecap:0,rounds:5,totalSec:600,tabataWork:20,tabataRest:10,tabataSets:8,startReps:1,endReps:10,stepReps:1,workPerRep:10,direction:'up'},
+  {id:1,type:'emom',name:'EMOM A',reps:5,workSec:150,restRepSec:10,restBlockSec:60,timecap:0,rounds:5,totalSec:600,tabataWork:20,tabataRest:10,tabataSets:8,startReps:1,endReps:10,stepReps:1,workPerRep:10,direction:'up',autoStart:false},
+  {id:2,type:'emom',name:'EMOM B',reps:5,workSec:180,restRepSec:10,restBlockSec:0,timecap:0,rounds:5,totalSec:600,tabataWork:20,tabataRest:10,tabataSets:8,startReps:1,endReps:10,stepReps:1,workPerRep:10,direction:'up',autoStart:false},
 ];
 let nextId=3;
 
-function def(idx){return{id:nextId++,type:'emom',name:'BLOQUE '+(idx+1),reps:5,workSec:150,restRepSec:10,restBlockSec:60,timecap:0,rounds:5,totalSec:600,tabataWork:20,tabataRest:10,tabataSets:8,startReps:1,endReps:10,stepReps:1,workPerRep:10,direction:'up'};}
+function def(idx){return{id:nextId++,type:'emom',name:'BLOQUE '+(idx+1),reps:5,workSec:150,restRepSec:10,restBlockSec:60,timecap:0,rounds:5,totalSec:600,tabataWork:20,tabataRest:10,tabataSets:8,startReps:1,endReps:10,stepReps:1,workPerRep:10,direction:'up',autoStart:false};}
 function fmt(s){s=Math.max(0,Math.round(s));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 function clamp(v,a,b){return Math.max(a,Math.min(b,v));}
 
@@ -315,19 +337,51 @@ function _getCtx(){
   if(!_audioCtx)_audioCtx=new(window.AudioContext||window.webkitAudioContext)();
   return _audioCtx;
 }
-function beep(freq,dur,vol){
+function _beep(ctx,when,freq){
   try{
-    const ctx=_getCtx();
-    const o=ctx.createOscillator();
-    const g=ctx.createGain();
+    const o=ctx.createOscillator(),g=ctx.createGain();
     o.connect(g);g.connect(ctx.destination);
     o.type='sine';o.frequency.value=freq;
-    g.gain.setValueAtTime(vol||0.6,ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+(dur||0.15));
-    o.start(ctx.currentTime);
-    o.stop(ctx.currentTime+(dur||0.15));
+    g.gain.setValueAtTime(1.2,when);g.gain.exponentialRampToValueAtTime(0.001,when+0.14);
+    o.start(when);o.stop(when+0.14);
   }catch(e){}
 }
+function _punch(ctx,when,dur){
+  try{
+    dur=dur||0.25;
+    const buf=ctx.createBuffer(1,ctx.sampleRate*dur,ctx.sampleRate);
+    const d=buf.getChannelData(0);
+    for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+    const src=ctx.createBufferSource(),g=ctx.createGain(),bq=ctx.createBiquadFilter();
+    bq.type='lowpass';bq.frequency.value=300;
+    src.buffer=buf;src.connect(bq);bq.connect(g);g.connect(ctx.destination);
+    g.gain.setValueAtTime(3.5,when);g.gain.exponentialRampToValueAtTime(0.001,when+dur);
+    src.start(when);
+    const o=ctx.createOscillator(),g2=ctx.createGain();
+    o.connect(g2);g2.connect(ctx.destination);
+    o.type='sine';
+    o.frequency.setValueAtTime(200,when);
+    o.frequency.exponentialRampToValueAtTime(40,when+dur);
+    g2.gain.setValueAtTime(2.5,when);g2.gain.exponentialRampToValueAtTime(0.001,when+dur);
+    o.start(when);o.stop(when+dur);
+  }catch(e){}
+}
+function phaseSound(){
+  try{
+    const ctx=_getCtx(),n=ctx.currentTime;
+    _beep(ctx,n,900);
+    _beep(ctx,n+0.18,900);
+    _punch(ctx,n+0.38,0.25);
+  }catch(e){}
+}
+function finishSound(){
+  try{
+    const ctx=_getCtx(),n=ctx.currentTime;
+    _punch(ctx,n,2.0);
+  }catch(e){}
+}
+function chirpUp(){phaseSound();}
+function chirpDown(){phaseSound();}
 // Desbloquear AudioContext en el primer gesto del usuario
 document.addEventListener('click',()=>{try{_getCtx();}catch(e){}},{once:true});
 document.addEventListener('keydown',()=>{try{_getCtx();}catch(e){}},{once:true});
@@ -345,11 +399,15 @@ function renderList(){
   blocks.forEach(b=>{
     const d=document.createElement('div');
     d.className='bi'+(nav.selectedId===b.id?' sel':'');
+    const isFirst=blocks.indexOf(b)===0;
     d.innerHTML='<div class="bi-dot '+dotCls(b.type)+'"></div>'
       +'<div class="bi-info"><div class="bi-name">'+b.name+'<span class="type-badge '+typeBadge(b.type)+'">'+typeLabel(b.type)+'</span></div>'
       +'<div class="bi-meta">'+blockMeta(b)+'</div></div>'
-      +'<div class="bi-dur">'+fmt(blockDur(b))+'</div>';
-    d.onclick=()=>{nav.selectedId=b.id;renderBuilder();};
+      +'<div class="bi-dur">'+fmt(blockDur(b))+'</div>'
+      +(isFirst?'':'<div class="bi-toggle"><button class="bi-toggle-btn '+(b.autoStart?'on':'off')+'" data-id="'+b.id+'"></button><div class="bi-toggle-lbl '+(b.autoStart?'on':'')+'">'+(b.autoStart?'AUTO':'PAUSA')+'</div></div>');
+    d.onclick=e=>{if(e.target.closest('.bi-toggle'))return;nav.selectedId=b.id;renderBuilder();};
+    const tBtn=d.querySelector('.bi-toggle-btn');
+    if(tBtn)tBtn.onclick=e=>{e.stopPropagation();b.autoStart=!b.autoStart;renderBuilder();};
     el.appendChild(d);
   });
   const add=document.createElement('button');
@@ -391,7 +449,7 @@ function renderEditor(){
           const dir=parseInt(a.dataset.d);
           if(f.type==='number')b[f.key]=clamp(b[f.key]+dir*f.step,f.min,f.max);
           else if(f.type==='time')b[f.key]=clamp(b[f.key]+dir*f.step,f.min,f.max);
-          else if(f.type==='select'){const o=f.options;b[f.key]=o[(o.indexOf(b[f.key])+dir+o.length)%o.length];}
+          else if(f.type==='select'){const o=f.options;b[f.key]=o[(o.indexOf(b[f.key])+dir+o.length)%o.length];if(f.key==='type'){const idx=blocks.findIndex(x=>x.id===b.id)+1;b.name=typeLabel(b[f.key])+' '+idx;}}
           renderBuilder();
         };
       });
@@ -428,7 +486,7 @@ function renderEditor(){
 }
 
 // ═══ RUNNER ═══
-let R={bi:0,phase:'work',rep:0,tl:0,pd:0,paused:false,iv:null,elapsed:0,dbMin:0,lrIdx:0,lrArr:[]};
+let R={bi:0,phase:'work',rep:0,tl:0,pd:0,paused:false,iv:null,elapsed:0,dbMin:0,lrIdx:0,lrArr:[],waitingIdx:0};
 
 function startRunner(){
   if(!blocks.length)return;
@@ -450,9 +508,24 @@ function startRunner(){
 
 function startBlock(idx){
   if(idx>=blocks.length){finishWod();return;}
+  const b=blocks[idx];
+  // First block always starts, subsequent blocks check autoStart
+  if(idx>0&&!b.autoStart){
+    clearInterval(R.iv);
+    R.waitingIdx=idx;
+    document.getElementById('waitNextName').textContent=b.name;
+    showScreen('waiting');
+    return;
+  }
+  R.bi=idx;R.rep=0;R.dbMin=0;R.lrIdx=0;
+  if(b.type==='ladder')R.lrArr=ladderArr(b);
+  startPhase('work');
+}
+function resumeBlock(idx){
   R.bi=idx;R.rep=0;R.dbMin=0;R.lrIdx=0;
   const b=blocks[idx];
   if(b.type==='ladder')R.lrArr=ladderArr(b);
+  showScreen('runner');
   startPhase('work');
 }
 
@@ -484,9 +557,9 @@ function startPhase(phase){
 function tick(){
   if(R.paused)return;
   R.tl--;R.elapsed++;updateUI();
-  if(R.tl<=3&&R.tl>0)triggerFlash();
+  if(R.tl===1){phaseSound();triggerFlash();}
+  if(R.tl<=3&&R.tl>0&&R.tl!==1)triggerFlash();
   if(R.tl<=0){
-    beep(880,0.18,0.7); // ← beep al finalizar fase
     clearInterval(R.iv);
     nextPhase();
   }
@@ -576,7 +649,7 @@ function getNext(){
 }
 function finishWod(){
   clearInterval(R.iv);
-  beep(660,0.4,0.8); // ← beep final WOD
+  finishSound();
   showScreen('finished');
   document.getElementById('finTime').textContent=fmt(R.elapsed);
 }
@@ -600,6 +673,9 @@ document.addEventListener('keydown',e=>{
     else if(e.key==='ArrowRight'){clearInterval(R.iv);nextPhase();}
     else if(e.key==='ArrowLeft'){clearInterval(R.iv);startBlock(R.bi);}
     else if(e.key==='Backspace'||e.key==='Escape'||e.keyCode===8){clearInterval(R.iv);showScreen('builder');renderBuilder();}
+  }else if(curScreen==='waiting'){
+    if(e.key==='Enter'||e.key===' ')document.getElementById('btnWaitGo').click();
+    else if(e.key==='Backspace'||e.key==='Escape'||e.keyCode===8)document.getElementById('btnWaitExit').click();
   }else if(curScreen==='finished'){
     if(e.key==='Enter'||e.key===' ')startRunner();
     else if(e.key==='Backspace'||e.key==='Escape'||e.keyCode===8){showScreen('builder');renderBuilder();}
@@ -614,6 +690,8 @@ document.addEventListener('keydown',e=>{
 
 document.getElementById('finRepeat').onclick=startRunner;
 document.getElementById('finEdit').onclick=()=>{showScreen('builder');renderBuilder();};
+document.getElementById('btnWaitGo').onclick=()=>{resumeBlock(R.waitingIdx);};
+document.getElementById('btnWaitExit').onclick=()=>{clearInterval(R.iv);showScreen('builder');renderBuilder();};
 
 showScreen('builder');
 renderBuilder();
